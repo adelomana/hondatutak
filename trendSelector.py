@@ -231,33 +231,6 @@ def essentialityReader():
 
     return essentialGenes
 
-def expressionReader():
-
-    '''
-    this function reads the protein expression data and returns a dictionary
-    '''
-
-    # f.1. checking that proteins were detected in both ST and SR
-    STproteins=getNames(stDataFile)
-    print('%s proteins detected in ST conditions...'%len(STproteins))
-    
-    SRproteins=getNames(srDataFile)
-    print('%s proteins detected in SR conditions...'%len(STproteins))
-
-    commonProteins=[]
-    for element in STproteins:
-        if element in SRproteins:
-            commonProteins.append(element)
-    uniqueProteins=list(set(commonProteins))
-    print('%s proteins found in both conditions...'%len(uniqueProteins))
-
-    # f.2. building the expression variable
-    proteome={}
-    proteome=expressionFileReader(stDataFile,uniqueProteins,proteome)
-    proteome=expressionFileReader(srDataFile,uniqueProteins,proteome)
-                            
-    return proteome,uniqueProteins
-
 def expressionFileReader(inputFileName,uniqueProteins,proteome):
 
     '''
@@ -294,6 +267,33 @@ def expressionFileReader(inputFileName,uniqueProteins,proteome):
                                 proteome[workingGenotype][workingReplicate][workingTime][geneName]=value
 
     return proteome
+
+def expressionReader():
+
+    '''
+    this function reads the protein expression data and returns a dictionary
+    '''
+
+    # f.1. checking that proteins were detected in both ST and SR
+    STproteins=getNames(stDataFile)
+    print('%s proteins detected in ST conditions...'%len(STproteins))
+    
+    SRproteins=getNames(srDataFile)
+    print('%s proteins detected in SR conditions...'%len(STproteins))
+
+    commonProteins=[]
+    for element in STproteins:
+        if element in SRproteins:
+            commonProteins.append(element)
+    uniqueProteins=list(set(commonProteins))
+    print('%s proteins found in both conditions...'%len(uniqueProteins))
+
+    # f.2. building the expression variable
+    proteome={}
+    proteome=expressionFileReader(stDataFile,uniqueProteins,proteome)
+    proteome=expressionFileReader(srDataFile,uniqueProteins,proteome)
+                            
+    return proteome,uniqueProteins
 
 def getNames(fileName):
 
@@ -407,25 +407,19 @@ def singleFigureGrapher(protein,axes,indexRow,indexCol,label):
     
     # f.0. variable to get trios
     csize=3
+    x=numpy.array(sampleTimePoints)
     
     # f.1. 744
     genotype='744'
     theColor='#F67770'
-    # ST1 --> ST3 
-    x=[];y=[]
-    for condition in ['ST1','ST3']:
+    trajectory744=[]
+    for condition in conditionNames:
         for replicate in replicates:
-            x.append(int(condition[-1]))
-            y.append(proteome[genotype][replicate][condition][protein])
-    for condition in ['SR1','SR3']:
-        for replicate in replicates:
-            x.append(int(condition[-1])+1)
-            y.append(proteome[genotype][replicate][condition][protein])
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,y)
-    x=numpy.array(x); y=numpy.array(y)
+            trajectory744.append(proteome[genotype][replicate][condition][protein])
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,trajectory744)
     model=slope*x+intercept
     cx=[x[i] for i in range(0,len(x),csize)]
-    cy=[list(y[i:i+csize]) for i in range(0,len(y),csize)]
+    cy=[list(trajectory744[i:i+csize]) for i in range(0,len(trajectory744),csize)]
     bp=axes[indexRow,indexCol].boxplot(cy,positions=cx,patch_artist=True)
     setBoxColors(bp,theColor)
     axes[indexRow,indexCol].plot(x,model,'-',color=theColor,lw=3,label='744')
@@ -433,33 +427,28 @@ def singleFigureGrapher(protein,axes,indexRow,indexCol,label):
     # f.2. WT
     genotype='WT'
     theColor='#1FBFC3'
-    # ST1 --> ST3
-    conditions=['ST1','ST3']
-    x=[];y=[]
-    for condition in ['ST1','ST3']:
+    trajectoryWT=[]
+    for condition in conditionNames:
         for replicate in replicates:
-            x.append(int(condition[-1]))
-            y.append(proteome[genotype][replicate][condition][protein])
-    for condition in ['SR1','SR3']:
-        for replicate in replicates:
-            x.append(int(condition[-1])+1)
-            y.append(proteome[genotype][replicate][condition][protein])
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,y)
-    x=numpy.array(x); y=numpy.array(y)
+            trajectoryWT.append(proteome[genotype][replicate][condition][protein])
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,trajectoryWT)
     model=slope*x+intercept
-    cx=[x[i] for i in range(0,len(x),csize)]
-    cy=[list(y[i:i+csize]) for i in range(0,len(y),csize)]
+    cx=[sampleTimePoints[i] for i in range(0,len(x),csize)]
+    cy=[list(trajectoryWT[i:i+csize]) for i in range(0,len(trajectoryWT),csize)]
     bp=axes[indexRow,indexCol].boxplot(cy,positions=cx,patch_artist=True)
     setBoxColors(bp,theColor)
     axes[indexRow,indexCol].plot(x,model,'-',color=theColor,lw=3,label='WT')
 
-    foldChange=numpy.mean(cy[-1])-numpy.mean(cy[0])
-    tempo,pvalueA=scipy.stats.shapiro(cy[0])
-    tempo,pvalueB=scipy.stats.shapiro(cy[-1])
+    begin=cy[0]
+    end=cy[-1]
+    foldChange=numpy.mean(end)-numpy.mean(begin)
+    tempo,pvalueA=scipy.stats.shapiro(begin)
+    tempo,pvalueB=scipy.stats.shapiro(end)
     if min(pvalueA,pvalueB) < 0.05:
-        statistic,pvalue=scipy.stats.mannwhitneyu(x,y)
+        statistic,pvalue=scipy.stats.mannwhitneyu(begin,end)
     else:
-        statistic,pvalue=scipy.stats.ttest_ind(x,y)
+        statistic,pvalue=scipy.stats.ttest_ind(begin,end)
+
     if pvalue > 0.05:
         formattedSignificance=''
     elif pvalue <= 0.05 and pvalue > 0.01:
@@ -480,14 +469,16 @@ def singleFigureGrapher(protein,axes,indexRow,indexCol,label):
     
     matplotlib.pyplot.xlim([0.5,4.5])
     if indexRow == 4:
-        axes[indexRow,indexCol].set_xticklabels(['ST1','ST3','SR1','SR3'])
+        axes[indexRow,indexCol].set_xticklabels(conditionNames)
     elif indexRow == 0 and label == 'systematic' and protein in ['Q3V892','Q72FN6']:
-        axes[indexRow,indexCol].set_xticklabels(['ST1','ST3','SR1','SR3'])
+        axes[indexRow,indexCol].set_xticklabels(conditionNames)
     else:
         axes[indexRow,indexCol].set_xticklabels([])
 
     if indexRow == 0:
         axes[indexRow,indexCol].legend(loc=3)
+
+    print(label)
 
     return None
 
