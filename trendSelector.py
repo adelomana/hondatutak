@@ -11,7 +11,7 @@ import multiprocessing, multiprocessing.pool
 def annotationReader():
 
     '''
-    this function reads the annotation file and creates a dictionary between systematic names and protein names
+    this function reads the annotation file and creates a dictionary between systematic gene names and protein names
     '''
 
     annotation={}
@@ -25,103 +25,65 @@ def annotationReader():
 
     return annotation
 
-def bootstrapperDown744(tempo):
+def bootstrapWTdown(tempo):
+
+    '''
+    this function is a wrapper to quantify the number of patterns (WT down) found in a random proteome
+    '''
 
     passed=0
     for randomProtein in range(len(listOfProteins)):
         trajectoryWT=random.choice(originalTrajectories)
         trajectory744=random.choice(originalTrajectories)
-        timePoints=[1,1,1,2,2,2,3,3,3,4,4,4]
-        flag=downRegulationChecker744(timePoints,trajectoryWT,trajectory744)
+        flag,gap=checkWTdown(sampleTimePoints,trajectoryWT,trajectory744)
         if flag == True:
             passed=passed+1
 
     return passed
 
-def bootstrapperUp(tempo):
+def bootstrapWTup(tempo):
+
+    '''
+    this function is a wrapper to quantify the number of patterns (WT up) found in a random proteome
+    '''
 
     passed=0
     for randomProtein in range(len(listOfProteins)):
         trajectoryWT=random.choice(originalTrajectories)
         trajectory744=random.choice(originalTrajectories)
-        timePoints=[1,1,1,2,2,2,3,3,3,4,4,4]
-        flag=upregulationChecker(timePoints,trajectoryWT,trajectory744)
+        flag=checkWTup(sampleTimePoints,trajectoryWT,trajectory744)
         if flag == True:
             passed=passed+1
 
     return passed
 
-def bootstrappingConditionChecker(tempo):
+def bootstrap744down(tempo):
 
     '''
-    this function checks the 4 conditions again
+    this function is a wrapper to quantify the number of patterns (744 down) found in a random proteome
     '''
 
-    # f.1. compute how many proteins pass the filter
     passed=0
     for randomProtein in range(len(listOfProteins)):
-
         trajectoryWT=random.choice(originalTrajectories)
         trajectory744=random.choice(originalTrajectories)
-
-        # checking the 4 rules
-        success=0
-
-        # f.1.1. condition 1: t-test on ST1 vs SR3
-        x=trajectoryWT[:3]
-        y=trajectoryWT[-3:]
-        tempo,pvalueA=scipy.stats.shapiro(x)
-        tempo,pvalueB=scipy.stats.shapiro(y)
-        if min(pvalueA,pvalueB) < 0.05:
-            statistic,pvalue=scipy.stats.mannwhitneyu(x,y)
-        else:
-            statistic,pvalue=scipy.stats.ttest_ind(x,y)
-        if pvalue < 0.05:
-            success=success+1
-
-        # f.1.2. condition 2: slope < 1 fold change in range (-1/3)
-        x=[1,1,1,2,2,2,3,3,3,4,4,4]
-        y=trajectoryWT
-        slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,y)
-        if slope < -(1/3):
-            success=success+1
-
-        # f.1.3. condition 3: slope slope > 1 fold change in range (-1/3)
-        y=trajectory744
-        slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,y)
-        if slope > -(1/3):
-            success=success+1
-
-        # f.1.4. condition 4: mean WT < mean 744 at SR3
-        x=trajectoryWT[-3:]
-        y=trajectory744[-3:]
-        if numpy.median(x) < numpy.median(y):
-            success=success+1
-
-        # counting number of proteins that passed
-        if success == 4:
+        flag=check744down(sampleTimePoints,trajectoryWT,trajectory744)
+        if flag == True:
             passed=passed+1
 
     return passed
-    
-def classifier(protein,verbose):
+
+def checkWTdown(sampleTimePoints,trajectoryWT,trajectory744):
 
     '''
-    this function classifies transcripts depending on several conditions
+    this function returns a binary for downregulation in the WT
     '''
 
-    evaluations=[None,None,None,None]
-    grades=[None,None,None,None]
-    
-    # 1. condition 1: t-test on ST1 vs SR3
-    genotype='WT'
-    condition='ST1'
-    x=[];y=[]
-    for replicate in replicates:
-        x.append(proteome[genotype][replicate][condition][protein])
-    condition='SR3'
-    for replicate in replicates:
-        y.append(proteome[genotype][replicate][condition][protein])
+    success=0
+
+    # f.1. condition 1: checking that there is significant regulation in WT ST1 vs SR3
+    x=trajectoryWT[:3]
+    y=trajectoryWT[-3:]
 
     tempo,pvalueA=scipy.stats.shapiro(x)
     tempo,pvalueB=scipy.stats.shapiro(y)
@@ -129,75 +91,83 @@ def classifier(protein,verbose):
         statistic,pvalue=scipy.stats.mannwhitneyu(x,y)
     else:
         statistic,pvalue=scipy.stats.ttest_ind(x,y)
-
-    grades[0]=pvalue
-        
     if pvalue < 0.05:
-        evaluations[0]=1
-    else:
-        evaluations[0]=0
+        success=success+1
 
-    # 2. condition 2: slope < 1 fold change in range (-1/3)
-    genotype='WT'
-    x=[];y=[]
-    for condition in ['ST1','ST3']:
-        for replicate in replicates:
-            x.append(int(condition[-1]))
-            y.append(proteome[genotype][replicate][condition][protein])
-    for condition in ['SR1','SR3']:
-        for replicate in replicates:
-            x.append(int(condition[-1])+1)
-            y.append(proteome[genotype][replicate][condition][protein])
-
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,y)
-    grades[1]=slope
+    # f.2. condition 2: slope > 1 fold change in range (1/3) for WT
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(sampleTimePoints,trajectoryWT)
     if slope < -(1/3):
-        evaluations[1]=1
-    else:
-        evaluations[1]=0
+        success=success+1
 
-    # 3. condition 3: slope slope > 1 fold change in range (-1/3)
-    genotype='744'
-    x=[];y=[]
-    for condition in ['ST1','ST3']:
-        for replicate in replicates:
-            x.append(int(condition[-1]))
-            y.append(proteome[genotype][replicate][condition][protein])
-    for condition in ['SR1','SR3']:
-        for replicate in replicates:
-            x.append(int(condition[-1])+1)
-            y.append(proteome[genotype][replicate][condition][protein])
-
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(x,y)
-    grades[2]=slope
+    # f.3. condition 3: slope slope < 1 fold change in range (1/3) for 744
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(sampleTimePoints,trajectory744)
     if slope > -(1/3):
-        evaluations[2]=1
-    else:
-        evaluations[2]=0
+        success=success+1
 
-    # 4. condition 4: mean WT < mean 744 at SR3
-    evaluations[3]=0
-    grades[3]=1
-    x=[];y=[]
-    condition='SR3'
-    genotype='WT'
-    for replicate in replicates:
-        x.append(proteome[genotype][replicate][condition][protein])
-    genotype='744'
-    for replicate in replicates:
-        y.append(proteome[genotype][replicate][condition][protein])
+    # f.4. condition 4: median WT < median 744 at SR3
+    x=trajectoryWT[-3:]
+    y=trajectory744[-3:]
+    if numpy.median(x) < numpy.median(y):
+        success=success+1
+
+    if success == 4:
+        flag=True
+    else:
+        flag=False
+
+    # f.5. computing the gap for ranking
     gap=min(y)-max(x)
 
-    if numpy.median(x) < numpy.median(y):
-        evaluations[3]=1
-        grades[3]=gap
-   
-    return gap,evaluations,grades
-
-def downRegulationChecker744(timePoints,trajectoryWT,trajectory744):
+    return flag,gap
+    
+def checkWTup(sampleTimePoints,trajectoryWT,trajectory744):
 
     '''
-    this function return a binary for downregulation in the 744
+    this function returns a binary for upregulation in the WT
+    '''
+
+    success=0
+
+    # f.1. condition 1: checking that there is significant upregulation in WT ST1 vs SR3
+    x=trajectoryWT[:3]
+    y=trajectoryWT[-3:]
+
+    tempo,pvalueA=scipy.stats.shapiro(x)
+    tempo,pvalueB=scipy.stats.shapiro(y)
+    if min(pvalueA,pvalueB) < 0.05:
+        statistic,pvalue=scipy.stats.mannwhitneyu(x,y)
+    else:
+        statistic,pvalue=scipy.stats.ttest_ind(x,y)
+    if pvalue < 0.05:
+        success=success+1
+
+    # f.2. condition 2: slope > 1 fold change in range (1/3) for WT
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(sampleTimePoints,trajectoryWT)
+    if slope > 1/3:
+        success=success+1
+
+    # f.3. condition 3: slope slope < 1 fold change in range (1/3) for 744
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(sampleTimePoints,trajectory744)
+    if slope < 1/3:
+        success=success+1
+
+    # f.4. condition 4: median WT > median 744 at SR3
+    x=trajectoryWT[-3:]
+    y=trajectory744[-3:]
+    if numpy.median(x) > numpy.median(y):
+        success=success+1
+
+    if success == 4:
+        flag=True
+    else:
+        flag=False
+
+    return flag
+
+def check744down(sampleTimePoints,trajectoryWT,trajectory744):
+
+    '''
+    this function returns a binary for downregulation in the 744
     '''
 
     success=0
@@ -216,12 +186,12 @@ def downRegulationChecker744(timePoints,trajectoryWT,trajectory744):
         success=success+1
 
     # f.2. condition 2: slope < -1 fold change in range (-1/3) for 744
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(timePoints,trajectory744)
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(sampleTimePoints,trajectory744)
     if slope < -(1/3):
         success=success+1
 
     # f.3. condition 3: slope > -1 fold change in range (-1/3) for WT
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(timePoints,trajectoryWT)
+    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(sampleTimePoints,trajectoryWT)
     if slope > -(1/3):
         success=success+1
 
@@ -264,28 +234,14 @@ def essentialityReader():
 def expressionReader():
 
     '''
-    this function reads the data and returns the expression in a dictionary format
+    this function reads the protein expression data and returns a dictionary
     '''
 
     # f.1. checking that proteins were detected in both ST and SR
-    STproteins=[]
-    with open(stDataFile,'r') as f:
-        next(f)
-        for line in f:
-            organism=line.split('\t')[0]
-            proteinName=line.split('\t')[1]
-            if organism == 'DESVH':
-                STproteins.append(proteinName)
+    STproteins=getNames(stDataFile)
     print('%s proteins detected in ST conditions...'%len(STproteins))
     
-    SRproteins=[]
-    with open(srDataFile,'r') as f:
-        next(f)
-        for line in f:
-            organism=line.split('\t')[0]
-            proteinName=line.split('\t')[1]
-            if organism == 'DESVH':
-                SRproteins.append(proteinName)
+    SRproteins=getNames(srDataFile)
     print('%s proteins detected in SR conditions...'%len(STproteins))
 
     commonProteins=[]
@@ -297,15 +253,15 @@ def expressionReader():
 
     # f.2. building the expression variable
     proteome={}
-    proteome=fileReader(stDataFile,uniqueProteins,proteome)
-    proteome=fileReader(srDataFile,uniqueProteins,proteome)
+    proteome=expressionFileReader(stDataFile,uniqueProteins,proteome)
+    proteome=expressionFileReader(srDataFile,uniqueProteins,proteome)
                             
     return proteome,uniqueProteins
 
-def fileReader(inputFileName,uniqueProteins,proteome):
+def expressionFileReader(inputFileName,uniqueProteins,proteome):
 
     '''
-    this function reads input files
+    this function reads expression input files
     '''
 
     with open(inputFileName,'r') as f:
@@ -326,7 +282,7 @@ def fileReader(inputFileName,uniqueProteins,proteome):
                         geneName=vector[1]
                         value=float(vector[i])
 
-                        # appending data
+                        # associating data to a variable
                         if geneName in uniqueProteins:
                             if workingGenotype not in proteome.keys():
                                 proteome[workingGenotype]={}
@@ -339,12 +295,28 @@ def fileReader(inputFileName,uniqueProteins,proteome):
 
     return proteome
 
+def getNames(fileName):
+
+    '''
+    this function reads the expression file and return the protein names
+    '''
+
+    proteinNames=[]
+    with open(fileName,'r') as f:
+        next(f)
+        for line in f:
+            organism=line.split('\t')[0]
+            proteinName=line.split('\t')[1]
+            if organism == 'DESVH':
+                proteinNames.append(proteinName)
+
+    return proteinNames
+
 def histogramBuilder(observedValue,distribution,label,histogramFigureFile):
 
     '''
     this function creates a histogram from the permutation analysis
     '''
-    
 
     # preparing bins
     top=max([max(distribution),observedValue])
@@ -353,12 +325,14 @@ def histogramBuilder(observedValue,distribution,label,histogramFigureFile):
     epsilon=int(0.1*interval)
     theBins=list(range(bottom-epsilon,top+epsilon))
 
+    # making the figure
     matplotlib.pyplot.hist(distribution,bins=theBins,normed=True,color='black')
     matplotlib.pyplot.axvline(x=observedValue,linewidth=2,color='r',ls='--')
     matplotlib.pyplot.xlabel('count')
     matplotlib.pyplot.ylabel('p(count)')
     matplotlib.pyplot.title(label)
 
+    # saving the figure to a file
     matplotlib.pyplot.tight_layout()
     matplotlib.pyplot.savefig(histogramFigureFile)
     matplotlib.pyplot.clf()
@@ -370,9 +344,10 @@ def panelGrapher(targets,label):
     '''
     this function makes a panel figure with target genes
     '''
-    # f.1. dealing with essential genes panel
+    
+    # f.1. dealing with representative genes panel
     figureFileName=figureDir+label+'.pdf'
-    if label == 'essential':
+    if label == 'representative':
         fig,axes=matplotlib.pyplot.subplots(nrows=5,ncols=2,figsize=(8.5,11))
         for i in range(len(targets)):
             indexRow=int(i/2)
@@ -383,7 +358,6 @@ def panelGrapher(targets,label):
         matplotlib.pyplot.savefig(figureFileName)
         matplotlib.pyplot.clf()
 
-            
     # f.2. dealing with systematic target genes
     if label == 'systematic':
         for i in range(len(targets)):
@@ -394,7 +368,6 @@ def panelGrapher(targets,label):
             localIndex=i-int(i/10)*10
             indexRow=int(localIndex/2)
             indexCol=localIndex-2*indexRow
-            #print(targets[i],i,indexRow,indexCol)
             singleFigureGrapher(targets[i],axes,indexRow,indexCol,label)
 
             if (i+1)%10 == 0:
@@ -402,7 +375,7 @@ def panelGrapher(targets,label):
                 matplotlib.pyplot.savefig(figureFileName)
                 matplotlib.pyplot.clf()
         
-        # completing the last figure
+        # completing last page of figures
         fig.tight_layout()
         for index1 in range(1,5):
             for index2 in range(1,3):
@@ -518,120 +491,28 @@ def singleFigureGrapher(protein,axes,indexRow,indexCol,label):
 
     return None
 
-def slopeCheck(protein,expectedDistribution):
-
-    '''
-    this function checks the slope difference for a protein
-    '''
-    
-    timePoints=[1,1,1,2,2,2,3,3,3,4,4,4]
-    trajectories=[]
-    
-    for genotype in genotypes:
-        trajectory=[]
-        for condition in ['ST1','SR1','ST3','SR3']:
-            for replicate in replicates:
-                trajectory.append(proteome[genotype][replicate][condition][protein])
-        trajectories.append(trajectory)
-
-    # compute the delta slope between the WT and 744 and append to distribution
-    trajectoryA=trajectories[0]
-    trajectoryB=trajectories[1]
-
-    slopeA,tempo,tempo,tempo,tempo=scipy.stats.linregress(timePoints,trajectoryA)
-    slopeB,tempo,tempo,tempo,tempo=scipy.stats.linregress(timePoints,trajectoryB)
-
-    slope=slopeA-slopeB
-
-    # compute the index and print
-    largerElements = [element for element in expectedDistribution if element > slope]
-    pvalue=1-(len(largerElements)/len(expectedDistribution))
-    if pvalue < 0.05:
-        tag='*'
-    else:
-        tag=''
-    message='\t'.join([annotation[protein],"{0:.4f}".format(slope),"{0:.4f}".format(pvalue),tag])
-
-    print(message)
-
-    return None
-
-def upregulationChecker(timePoints,trajectoryWT,trajectory744):
-
-    '''
-    this function return a binary for upregulation in the WT
-    '''
-
-    success=0
-
-    # f.1. condition 1: checking that there is significant upregulation in WT ST1 vs SR3
-    x=trajectoryWT[:3]
-    y=trajectoryWT[-3:]
-
-    tempo,pvalueA=scipy.stats.shapiro(x)
-    tempo,pvalueB=scipy.stats.shapiro(y)
-    if min(pvalueA,pvalueB) < 0.05:
-        statistic,pvalue=scipy.stats.mannwhitneyu(x,y)
-    else:
-        statistic,pvalue=scipy.stats.ttest_ind(x,y)
-    if pvalue < 0.05:
-        success=success+1
-
-    # f.2. condition 2: slope > 1 fold change in range (1/3) for WT
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(timePoints,trajectoryWT)
-    if slope > 1/3:
-        success=success+1
-
-    # f.3. condition 3: slope slope < 1 fold change in range (1/3) for 744
-    slope,intercept,r_value,p_value,std_err=scipy.stats.linregress(timePoints,trajectory744)
-    if slope < 1/3:
-        success=success+1
-
-    # f.4. condition 4: median WT > median 744 at SR3
-    x=trajectoryWT[-3:]
-    y=trajectory744[-3:]
-    if numpy.median(x) > numpy.median(y):
-        success=success+1
-
-    if success == 4:
-        flag=True
-    else:
-        flag=False
-
-    return flag
-
-def visualTargetsReader():
-
-    '''
-    this function reads the visual targets
-    '''
-
-    visualTargets=[]
-    with open(visualTargetsFile,'r') as f:
-        for line in f:
-            vector=line.split('\t')
-            proteinName=[proteinName for proteinName, systematicName in annotation.items() if systematicName == vector[0]][0]
-            visualTargets.append(proteinName)
-
-    return visualTargets
-
+###
 ### MAIN
+###
+
+print()
+print('WELCOME TO PROTEOME TREND ANALYSIS.')
 
 # 0. user defined functions
 stDataFile='/Users/alomana/gDrive2/projects/enigma/data/proteomics/dv-mmp_20160830-L1vsL3.txt'
 srDataFile='/Users/alomana/gDrive2/projects/enigma/data/proteomics/dv-mmp_20160830-LS1vsLS3.txt'
-figureDir='figures/'
+figureDir='/Users/alomana/gDrive2/tmp/'
 annotationFile='/Users/alomana/gDrive2/projects/enigma/data/proteomics/dvh-protein-annotations.txt'
 visualTargetsFile='/Users/alomana/gDrive2/projects/enigma/data/proteomics/proteins-with-trend.txt'
 essentialityFile='/Users/alomana/gDrive2/projects/enigma/data/proteomics/dvu_essential-genes.txt'
 
 genotypes=['WT','744']
 replicates=['1','2','3']
-timePoints=['ST1','SR1','ST3','SR3']
+conditionNames=['ST1','SR1','ST3','SR3']
 
-iterations=10000 # should be 10k
-
+iterations=100 # for the permutation analysis. 10,000 is a good size
 numberOfThreads=4
+sampleTimePoints=[1,1,1,2,2,2,3,3,3,4,4,4]
 
 # 1. read data
 print()
@@ -645,188 +526,163 @@ proteome,listOfProteins=expressionReader()
 listOfProteins.sort()
 print('%s proteins found.'%len(listOfProteins))
 
-# 1.3. read visual targets
-visualTargets=visualTargetsReader()
-print('%s visual targets identified.'%len(visualTargets))
-
-# 1.4. reading essentiality
+# 1.3. reading essentiality
 essentialGenes=essentialityReader()
 
 # 2. classifying proteins
 print()
-print('classifying proteins ...')
+print('classifying proteins...')
 
-found={}
-gaps={}
-notifications={}
+allFlags=[]
+lastTimeGap={}
 for protein in listOfProteins:
-    gap,evaluations,grades=classifier(protein,verbose=False)
-    notifications[protein]=[evaluations,grades]
-    gaps[protein]=gap
-    if sum(evaluations) == 4:
-        found[protein]=gap
-systematicTargets=sorted(found,key=found.__getitem__,reverse=True)
+    # selecting the trajectories for WT
+    trajectoryWT=[]
+    genotype='WT'
+    for condition in conditionNames:
+        for replicate in replicates:
+            trajectoryWT.append(proteome[genotype][replicate][condition][protein])
+
+    # selecting the trajectories for 744
+    trajectory744=[]
+    genotype='744'
+    for condition in conditionNames:
+        for replicate in replicates:
+            trajectory744.append(proteome[genotype][replicate][condition][protein])
+
+    # checking for pattern
+    flag,gap=checkWTdown(sampleTimePoints,trajectoryWT,trajectory744)
+    if flag == True:
+        lastTimeGap[protein]=gap
+systematicTargets=sorted(lastTimeGap,key=lastTimeGap.__getitem__,reverse=True)
 print('%s systematic targets identified.'%len(systematicTargets))
 
-# 3. compare systematic vs visual targets
+# 3. plotting
 print()
-print('comparing 2 sets of targets...')
-# 3.1. are visual targets a subset of visual targets?
-intersection=list(set(visualTargets) & set(systematicTargets))
-if len(systematicTargets) == len(intersection):
-    print('systematic targets IS a subset of visual targets.')
-else:
-    print('systematic targets IS NOT a subset of visual targets.')
-print()
-
-# visual targets backup by systematic analysis
-intersection=list(set(visualTargets) & set(systematicTargets))
-print('%s visual targets in systematic targets:'%(len(intersection)))
-for element in intersection:
-    print(annotation[element])
-print()
-
-# missing targets in visual
-new=[element for element in systematicTargets if element not in visualTargets]
-print('%s systematic targets not in visual targets:'%len(new))
-for element in new:
-    print(annotation[element])
-print()
-
-# define visual targets failed...
-failed=[element for element in visualTargets if element not in systematicTargets]
-
-# 4. plotting
 print('plotting...')
 
-# 4.1. plotting all essential genes ordered by gap
-print('plotting essential panel...')
+# 3.1. plotting representative genes ordered by gap
+print('plotting representative panel...')
 selectedTargets=['Q72WJ8','Q72CT6','Q72WF7','Q72A54','Q726R4','Q72AR0','Q72FA9','Q725Z7','Q727Q1','Q72AF9']
-panelGrapher(selectedTargets,'essential')
+panelGrapher(selectedTargets,'representative')
 
-# 4.2. plotting all genes ordered by gap
+# 3.2. plotting all genes ordered by gap
 print('plotting systematic targets...')
-selectedGaps={key:value for key,value in gaps.items() if key in systematicTargets}
-sortedTargets=sorted(selectedGaps,key=selectedGaps.__getitem__,reverse=True)
-panelGrapher(sortedTargets,'systematic')
+panelGrapher(systematicTargets,'systematic')
 
-# 5. bootstrapping
+# 4. bootstrapping for WT downregulation
 print()
-print('bootstrapping for downregulation...')
+print('bootstrapping for WT downregulation...')
 
-# 5.1. storing original information
+# 4.1. storing original information
 originalTrajectories=[]
 for protein in listOfProteins:
     for genotype in genotypes:
         y=[]
-        for condition in ['ST1','SR1','ST3','SR3']:
+        for condition in conditionNames:
             for replicate in replicates:
                 y.append(proteome[genotype][replicate][condition][protein])
         originalTrajectories.append(y)
 
-# 5.2. for n proteomes
+# 4.2. sampling n proteomes
 hydra=multiprocessing.pool.Pool(numberOfThreads)
 distribution=[None for i in range(iterations)]
-distribution=hydra.map(bootstrappingConditionChecker,distribution)
+distribution=hydra.map(bootstrapWTdown,distribution)
     
-# 5.4 compute the p-value of finding systematic targets
-distribution.sort()
-print(distribution[:100])
+# 4.3. compute the p-value of finding systematic targets
 largeElements=[element for element in distribution if element >= len(systematicTargets)]
 pvalue=len(largeElements)/len(distribution)
-print('%s samplings with more cases than found. P-value: %s'%(len(largeElements),pvalue))
+print('%s samplings with more cases than found. p-value: %s'%(len(largeElements),pvalue))
 
+# 4.4. making a histogram plot out of the distribution
 label='WT down regulation'
-histogramFigureFile=figureDir+'permutation.WT.downregulation.pdf'
+histogramFigureFile=figureDir+'permutation.WT.down.pdf'
 histogramBuilder(len(systematicTargets),distribution,label,histogramFigureFile)
 
-# 6. bootstrapping on the opposite pattern
+# 5. bootstrapping for WT upregulation
 print()
-print('bootstrapping for upregulation...')
+print('bootstrapping for WT upregulation...')
           
-# 6.1. finding the number of cases that pass opposite pattern
+# 5.1. finding the number of cases that pass opposite pattern
 allFlags=[]
 for protein in listOfProteins:
 
-    timePoints=[1,1,1,2,2,2,3,3,3,4,4,4]
     # selecting the trajectories for WT
     trajectoryWT=[]
     genotype='WT'
-    for condition in ['ST1','SR1','ST3','SR3']:
+    for condition in conditionNames:
         for replicate in replicates:
             trajectoryWT.append(proteome[genotype][replicate][condition][protein])
 
     # selecting the trajectories for 744
     trajectory744=[]
     genotype='744'
-    for condition in ['ST1','SR1','ST3','SR3']:
+    for condition in conditionNames:
         for replicate in replicates:
             trajectory744.append(proteome[genotype][replicate][condition][protein])
 
     # checking for pattern
-    flag=upregulationChecker(timePoints,trajectoryWT,trajectory744)
+    flag=checkWTup(sampleTimePoints,trajectoryWT,trajectory744)
     allFlags.append(flag)
 numberOfUpregulated=sum(allFlags)
-print('%s upregulated proteins found'%(numberOfUpregulated))
+print('%s upregulated proteins found in WT.'%(numberOfUpregulated))
     
-# 6.2. finding the distribution of cases from a shuffled bag
+# 5.2. finding the distribution of cases from a shuffled bag
 distribution=[None for element in range(iterations)]
-distribution=hydra.map(bootstrapperUp,distribution)
+distribution=hydra.map(bootstrapWTup,distribution)
 
-# 6.3. computing the p-value
-distribution.sort()
-print(distribution[:100])
+# 5.3. computing the p-value
 largeElements=[element for element in distribution if element >= numberOfUpregulated]
 pvalue=len(largeElements)/len(distribution)
-print('%s samplings with more cases than found. P-value: %s'%(len(largeElements),pvalue))
+print('%s samplings with more cases than found. p-value: %s'%(len(largeElements),pvalue))
 
+# 5.4. making a histogram plot out of the distribution
 label='WT up regulation'
-histogramFigureFile=figureDir+'permutation.WT.upregulation.pdf'
+histogramFigureFile=figureDir+'permutation.WT.up.pdf'
 histogramBuilder(numberOfUpregulated,distribution,label,histogramFigureFile)
 
-# 7. Check that the pattern of downregulated proteins in 744. Is this more than chance?
+# 6. bootstrapping for 744 downregulation
 print()
-print('bootstrapping for downregulation in 744...')
+print('bootstrapping for 744 downregulation...')
 
-# 7.1. finding the number of cases for that pattern
+# 6.1. finding the number of cases for that pattern
 allFlags=[]
 for protein in listOfProteins:
 
-    timePoints=[1,1,1,2,2,2,3,3,3,4,4,4]
     # selecting the trajectories for WT
     trajectoryWT=[]
     genotype='WT'
-    for condition in ['ST1','SR1','ST3','SR3']:
+    for condition in conditionNames:
         for replicate in replicates:
             trajectoryWT.append(proteome[genotype][replicate][condition][protein])
 
     # selecting the trajectories for 744
     trajectory744=[]
     genotype='744'
-    for condition in ['ST1','SR1','ST3','SR3']:
+    for condition in conditionNames:
         for replicate in replicates:
             trajectory744.append(proteome[genotype][replicate][condition][protein])
 
     # checking for pattern
-    flag=downRegulationChecker744(timePoints,trajectoryWT,trajectory744)
+    flag=check744down(sampleTimePoints,trajectoryWT,trajectory744)
     allFlags.append(flag)
 numberOfDownregulated744=sum(allFlags)
-print('%s downregulated 744 proteins found'%(numberOfDownregulated744))
+print('%s downregulated proteins found in 744.'%(numberOfDownregulated744))
 
-# 7.2. finding the distribution of cases from a shuffled bag
+# 6.2. finding the distribution of cases from a shuffled bag
 distribution=[None for element in range(iterations)]
-distribution=hydra.map(bootstrapperDown744,distribution)
+distribution=hydra.map(bootstrap744down,distribution)
 
-# 7.3. computing the p-value
-distribution.sort()
-print(distribution[:100])
+# 6.3. computing the p-value
 largeElements=[element for element in distribution if element >= numberOfDownregulated744]
 pvalue=len(largeElements)/len(distribution)
-print('%s samplings with more cases than found. P-value: %s'%(len(largeElements),pvalue))
+print('%s samplings with more cases than found. p-value: %s'%(len(largeElements),pvalue))
 
+# 6.4. making a histogram plot out of the distribution
 label='744 down regulation'
-histogramFigureFile=figureDir+'permutation.744.dowregulation.pdf'
+histogramFigureFile=figureDir+'permutation.744.down.pdf'
 histogramBuilder(numberOfDownregulated744,distribution,label,histogramFigureFile)
 
-# 8. final message
-print('... all done.')
+# 7. final message
+print()
+print('... ALL DONE.')
