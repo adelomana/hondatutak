@@ -8,6 +8,9 @@ import scipy,scipy.stats
 import matplotlib,matplotlib.pyplot
 import multiprocessing, multiprocessing.pool
 
+matplotlib.rcParams['pdf.fonttype']=42 # this cryptical line is necessary for Illustrator compatibility of text saved as pdf
+matplotlib.rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+
 def annotationReader():
 
     '''
@@ -391,10 +394,10 @@ def setBoxColors(bp,theColor):
     this function access the elements of a boxplot and colors them appropriately
     '''
 
-    matplotlib.pyplot.setp(bp['boxes'],color=theColor,alpha=0.33)
+
+    matplotlib.pyplot.setp(bp['boxes'],color=theColor,alpha=0.33,linewidth=0)
     matplotlib.pyplot.setp(bp['caps'],color='None')
     matplotlib.pyplot.setp(bp['whiskers'],color=theColor,ls='-',alpha=0.33)
-    matplotlib.pyplot.setp(bp['fliers'],markeredgecolor=theColor,marker='+')
     matplotlib.pyplot.setp(bp['medians'],color=theColor,alpha=0.33)
 
     return None
@@ -499,7 +502,7 @@ genotypes=['WT','744']
 replicates=['1','2','3']
 conditionNames=['ST1','SR1','ST3','SR3']
 
-iterations=100 # for the permutation analysis. 10,000 is a good size
+iterations=10000 # for the permutation analysis. 10,000 is a good size
 numberOfThreads=4
 sampleTimePoints=[1,1,1,2,2,2,3,3,3,4,4,4]
 
