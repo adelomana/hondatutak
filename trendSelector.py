@@ -478,8 +478,6 @@ def singleFigureGrapher(protein,axes,indexRow,indexCol,label):
     if indexRow == 0:
         axes[indexRow,indexCol].legend(loc=3)
 
-    print(label)
-
     return None
 
 ###
