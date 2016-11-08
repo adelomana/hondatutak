@@ -120,6 +120,26 @@ def proteomeReader():
                                 
     return proteome,listOfProteomicsNames
 
+def singleCellReader():
+
+    '''
+    this function returns the names of the single cell genes
+    '''
+
+    singleCellGenes=[]
+    
+    with open(singleCellTranscriptsFile,'r') as f:
+        next(f)
+        for line in f:
+            vector=line.split('\t')
+            name=vector[0]
+            if 'DVU' in name:
+                singleCellGenes.append(name)
+
+    listOfSingleCellNames=list(set(singleCellGenes))
+
+    return listOfSingleCellNames
+
 def transcriptomeReader():
 
     '''
@@ -181,8 +201,11 @@ figureDir='/Users/alomana/gDrive2/tmp/'
 annotationFile='/Users/alomana/gDrive2/projects/enigma/data/proteomics/dvh-protein-annotations.txt'
 transcriptomeDataFile='/Users/alomana/gDrive2/projects/enigma/data/cufflinks_fpkms_matrix.v2.txt'
 histogramFigureFile='/Users/alomana/gDrive2/tmp/histogramFigure.pdf'
+histogramFigureFileDelta='/Users/alomana/gDrive2/tmp/histogramFigureDelta.pdf'
 correlatedGenesFile='/Users/alomana/gDrive2/tmp/correlated.txt'
 anticorrelatedGenesFile='/Users/alomana/gDrive2/tmp/anticorrelated.txt'
+lostCorrelationGenes='/Users/alomana/gDrive2/tmp/deltaGenes.txt'
+singleCellTranscriptsFile='/Users/alomana/gDrive2/projects/enigma/data/single.cell/SupplementaryTable-S9.txt'
 
 genotypes=['WT','744']
 conditionNames=['ST1','SR1','ST3','SR3']
@@ -206,28 +229,38 @@ print('%s proteins quantified.'%len(listOfProteomicsNames))
 transcriptome,listOfTranscriptomicsNames=transcriptomeReader()
 print('%s transcripts quantified.'%len(listOfTranscriptomicsNames))
 
+# 1.4. read single cell genes
+listOfSingleCellNames=singleCellReader()
+print('%s single cell genes found.'%len(listOfSingleCellNames))
+
 # 2. compute correlation
 print()
 print('computing correlations...')
 
 # 2.1. find the intersection of both protein and transcript quantification
 intersection=list(set(listOfProteomicsNames) & set(listOfTranscriptomicsNames))
+intersection=list(set(listOfProteomicsNames) & set(listOfTranscriptomicsNames) & set(listOfSingleCellNames))
 print('%s elements with both transcript and protein quantification.'%(len(intersection)))
 
 # 2.2. format for correlation computation
 rhos=[]
+deltas=[]
 threshold=10 # threshold for maximal expression
 correlatedGenes={}
 anticorrelatedGenes={}
+deltaGenes={}
 
 for geneName in intersection:
-    
+
     coefficients=[]
     lowAbundance=False
-    print(geneName)
+    
+    coefficientsPerGenotype={}
 
     for genotype in genotypes:
-        
+
+        coefficientsPerGenotype[genotype]=[]
+
         # take the 3 transcript replicates
         transcriptValues=[]
         for replicate in transcriptReplicateNames:
@@ -239,7 +272,6 @@ for geneName in intersection:
                 lowAbundance=True
             transformedSeries=[numpy.log2((element+1)/(series[0]+1)) for element in series]
             transcriptValues.append(transformedSeries)
-            print(transformedSeries)
                 
         # take the 2 protein replicates
         proteinValues=[]
@@ -250,16 +282,16 @@ for geneName in intersection:
                 series.append(value)
             transformedSeries=[element-series[0] for element in series]
             proteinValues.append(transformedSeries)
-            print(series)
-            print(transformedSeries)
-        print()
             
         # compute the 6 correlation coefficients and take the median
         for seriesT in transcriptValues:
             for seriesP in proteinValues:
                 pearsonC=scipy.stats.pearsonr(seriesT,seriesP)[0]
                 coefficients.append(pearsonC)
-                
+
+                # adding coefficients per genotype
+                coefficientsPerGenotype[genotype].append(pearsonC)
+
     # adding the median value
     if lowAbundance is not True:
         average=numpy.median(coefficients)
@@ -271,6 +303,14 @@ for geneName in intersection:
         if average > 0.5:
             correlatedGenes[geneName]=average
 
+        # checking the differences between genotypes
+        averageWT=numpy.median(coefficientsPerGenotype['WT'])
+        average744=numpy.median(coefficientsPerGenotype['744'])
+        difference=averageWT-average744
+        deltas.append(difference)
+        if abs(difference) > 1:
+            deltaGenes[geneName]=difference
+        
 # 2.3. saving anticorrelated and correlated genes into files
 print('saving into files anticorrelated and correlated genes...')
 f=open(anticorrelatedGenesFile,'w')
@@ -279,7 +319,6 @@ sortedGenes=sorted(anticorrelatedGenes,key=anticorrelatedGenes.__getitem__)
 for element in sortedGenes:
     line=element+'\t'+str(anticorrelatedGenes[element])+'\n'
     f.write(line)
-    print(element)
 f.close()
 
 f=open(correlatedGenesFile,'w')
@@ -288,20 +327,47 @@ sortedGenes=sorted(correlatedGenes,key=correlatedGenes.__getitem__,reverse=True)
 for element in sortedGenes:
     line=element+'\t'+str(correlatedGenes[element])+'\n'
     f.write(line)
-f.close()  
+f.close()
 
-# 3. make a figure with distribution of coefficients
+# 2.4. saving differences into file
+f=open(lostCorrelationGenes,'w')
+f.write('Gene ID\tCorrelationDifference\n')
+sortedGenes=sorted(deltaGenes,key=deltaGenes.__getitem__,reverse=True)
+for element in sortedGenes:
+    line=element+'\t'+str(deltaGenes[element])+'\n'
+    f.write(line)
+f.close()
+
+# 3. make a figure with distributions
 print()
-print('making a distribution figure...')
-n,bins,tempo=matplotlib.pyplot.hist(rhos,bins=33,range=(-1,1),normed=True,color='black')
+print('making distribution figures...')
+
+# 3.1. making figure of correlation distribution
+n,bins,tempo=matplotlib.pyplot.hist(rhos,bins=10,range=(-1,1),normed=True,color='black')
 matplotlib.pyplot.xlim([-1.1,1.1])
 #matplotlib.pyplot.ylim([-0.05,1.5])
 matplotlib.pyplot.xlabel('rho')
 matplotlib.pyplot.ylabel('p(rho)')
 
-# 3.1. saving the figure to a file
+# saving the figure to a file
 matplotlib.pyplot.tight_layout()
 matplotlib.pyplot.savefig(histogramFigureFile)
 matplotlib.pyplot.clf()
 
 
+# 3.2. making histogram of differences
+n,bins,tempo=matplotlib.pyplot.hist(deltas,bins=33,range=(-2,2),normed=True,color='black')
+#matplotlib.pyplot.xlim([-1.1,1.1])
+#matplotlib.pyplot.ylim([-0.05,1.5])
+matplotlib.pyplot.xlabel('delta')
+matplotlib.pyplot.ylabel('p(delta)')
+
+# saving the figure to a file
+matplotlib.pyplot.tight_layout()
+matplotlib.pyplot.savefig(histogramFigureFileDelta)
+matplotlib.pyplot.clf()
+
+# 4. final message
+print()
+print('... all done.')
+print()
