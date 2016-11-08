@@ -239,7 +239,7 @@ print('computing correlations...')
 
 # 2.1. find the intersection of both protein and transcript quantification
 intersection=list(set(listOfProteomicsNames) & set(listOfTranscriptomicsNames))
-intersection=list(set(listOfProteomicsNames) & set(listOfTranscriptomicsNames) & set(listOfSingleCellNames))
+#intersection=list(set(listOfProteomicsNames) & set(listOfTranscriptomicsNames) & set(listOfSingleCellNames))
 print('%s elements with both transcript and protein quantification.'%(len(intersection)))
 
 # 2.2. format for correlation computation
@@ -343,7 +343,7 @@ print()
 print('making distribution figures...')
 
 # 3.1. making figure of correlation distribution
-n,bins,tempo=matplotlib.pyplot.hist(rhos,bins=10,range=(-1,1),normed=True,color='black')
+n,bins,tempo=matplotlib.pyplot.hist(rhos,bins=33,range=(-1,1),normed=True,color='black') # bins=10 for sc
 matplotlib.pyplot.xlim([-1.1,1.1])
 #matplotlib.pyplot.ylim([-0.05,1.5])
 matplotlib.pyplot.xlabel('rho')
